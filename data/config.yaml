@@ -1,0 +1,3 @@
+llm:
+  default: "qwen2.5:14b"
+  coding: "codeqwen:7b"
