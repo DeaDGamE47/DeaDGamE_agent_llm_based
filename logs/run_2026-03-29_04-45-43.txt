@@ -1,0 +1,23 @@
+[2026-03-29 04:45:52,159] [INFO] [Agent] USER INPUT: открой папку тестис
+[2026-03-29 04:45:52,160] [INFO] [Interpreter] INTERPRET INPUT: открой папку тестис
+[2026-03-29 04:45:52,160] [DEBUG] [Interpreter] PROMPT: {'system': '\nТы извлекаешь intent и entities.\n\nФормат:\n{\n  "intent": "string",\n  "entities": {}\n}\n\nПРАВИЛА:\n\n1. Используй:\n   file.name\n   folder.name\n\n2. Контекст:\n   "эта папка", "в этой папке" → folder.ref="last"\n   "этот файл" → file.ref="last"\n\n3. Тип файла:\n   python → type="python"\n   json → type="json"\n   текстовый → type="txt"\n\nНЕ придумывай лишние поля.\n', 'user': 'открой папку тестис', 'context': ''}
+[2026-03-29 04:45:53,103] [DEBUG] [Interpreter] RAW RESPONSE: {
+  "intent": "open_folder",
+  "entities": {
+    "folder": {"ref": "testis", "name": "testis"}
+  }
+}
+[2026-03-29 04:45:53,103] [DEBUG] [Interpreter] PARSED BEFORE NORMALIZE: {'intent': 'open_folder', 'entities': {'folder': {'ref': 'testis', 'name': 'testis'}}}
+[2026-03-29 04:45:53,103] [DEBUG] [Interpreter] INTENT NORMALIZED: open_folder → open
+[2026-03-29 04:45:53,103] [DEBUG] [Interpreter] REMOVE REF FROM FOLDER (name present)
+[2026-03-29 04:45:53,103] [DEBUG] [Interpreter] PARSED AFTER NORMALIZE: {'intent': 'open', 'entities': {'folder': {'name': 'testis'}}}
+[2026-03-29 04:45:53,103] [DEBUG] [Planner] INTENT: open
+[2026-03-29 04:45:53,103] [DEBUG] [Planner] ENTITIES: {'folder': {'name': 'testis'}}
+[2026-03-29 04:45:53,103] [DEBUG] [Planner] FINAL PLAN: [{'tool': 'find', 'output': 'path', 'args': {'name': 'testis', 'type': 'folder', 'path': '__SELECTED__'}}, {'tool': 'open', 'args': {'path': 'path'}}]
+[2026-03-29 04:45:53,103] [DEBUG] [Router] ROUTING START
+[2026-03-29 04:45:53,103] [DEBUG] [Router] ROUTE: find → fast
+[2026-03-29 04:45:53,103] [DEBUG] [Router] ROUTE: open → fast
+[2026-03-29 04:45:53,103] [INFO] [Executor] EXECUTION START
+[2026-03-29 04:45:53,103] [DEBUG] [Executor] RUN TOOL: find | ARGS: {'name': 'testis', 'type': 'folder', 'path': None}
+[2026-03-29 04:46:00,108] [DEBUG] [Executor] RESULT: {'status': 'multiple', 'data': ['C:/python_progects\\one_for_all\\venv\\Lib\\site-packages\\setuptools\\tests', 'C:/python_progects\\one_for_all\\venv\\Lib\\site-packages\\setuptools\\_distutils\\tests', 'C:/python_progects\\one_for_all\\venv\\Lib\\site-packages\\setuptools\\_distutils\\compilers\\C\\tests', 'C:/python_progects\\one_for_all\\venv\\Lib\\site-packages\\pkg_resources\\tests', 'C:/python_progects\\my_pc_skripts\\venv\\Lib\\site-packages\\zope\\interface\\tests']}
+[2026-03-29 04:46:00,108] [INFO] [Executor] MULTIPLE RESULTS

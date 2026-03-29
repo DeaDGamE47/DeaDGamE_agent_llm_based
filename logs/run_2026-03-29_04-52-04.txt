@@ -1,0 +1,53 @@
+[2026-03-29 04:52:10,207] [INFO] [Agent] USER INPUT: открой папку тестис
+[2026-03-29 04:52:10,208] [INFO] [Interpreter] INTERPRET INPUT: открой папку тестис
+[2026-03-29 04:52:10,208] [DEBUG] [Interpreter] PROMPT: {'system': '\nТы извлекаешь intent и entities.\nВАЖНО:\n- НЕ переводи слова пользователя\n- СОХРАНЯЙ оригинальный язык (русский/английский)\n- "тестис" ≠ "testis"\n- возвращай текст КАК ЕСТЬ\n\nФормат:\n{\n  "intent": "string",\n  "entities": {}\n}\n\nПРАВИЛА:\n\n1. Используй:\n   file.name\n   folder.name\n\n2. Контекст:\n   "эта папка", "в этой папке" → folder.ref="last"\n   "этот файл" → file.ref="last"\n\n3. Тип файла:\n   python → type="python"\n   json → type="json"\n   текстовый → type="txt"\n\nНЕ придумывай лишние поля.\n', 'user': 'открой папку тестис', 'context': ''}
+[2026-03-29 04:52:10,987] [DEBUG] [Interpreter] RAW RESPONSE: {
+  "intent": "open_folder",
+  "entities": {
+    "folder_name": "тестис"
+  }
+}
+[2026-03-29 04:52:10,987] [DEBUG] [Interpreter] PARSED BEFORE NORMALIZE: {'intent': 'open_folder', 'entities': {'folder_name': 'тестис'}}
+[2026-03-29 04:52:10,987] [DEBUG] [Interpreter] INTENT NORMALIZED: open_folder → open
+[2026-03-29 04:52:10,988] [DEBUG] [Interpreter] PARSED AFTER NORMALIZE: {'intent': 'open', 'entities': {'folder': {'name': 'тестис'}}}
+[2026-03-29 04:52:10,988] [DEBUG] [Planner] INTENT: open
+[2026-03-29 04:52:10,988] [DEBUG] [Planner] ENTITIES: {'folder': {'name': 'тестис'}}
+[2026-03-29 04:52:10,988] [DEBUG] [Planner] FINAL PLAN: [{'tool': 'find', 'output': 'path', 'args': {'name': 'тестис', 'type': 'folder', 'path': '__SELECTED__'}}, {'tool': 'open', 'args': {'path': 'path'}}]
+[2026-03-29 04:52:10,988] [DEBUG] [Router] ROUTING START
+[2026-03-29 04:52:10,988] [DEBUG] [Router] ROUTE: find → fast
+[2026-03-29 04:52:10,988] [DEBUG] [Router] ROUTE: open → fast
+[2026-03-29 04:52:10,988] [INFO] [Executor] EXECUTION START
+[2026-03-29 04:52:10,988] [DEBUG] [Executor] RUN TOOL: find | ARGS: {'name': 'тестис', 'type': 'folder', 'path': None}
+[2026-03-29 04:52:10,988] [DEBUG] [Executor] RESULT: {'status': 'success', 'data': 'C:/тестис'}
+[2026-03-29 04:52:10,988] [DEBUG] [Executor] RUN TOOL: open | ARGS: {'path': 'C:/тестис'}
+[2026-03-29 04:52:10,988] [INFO] [Tool:open] OPEN: C:/тестис
+[2026-03-29 04:52:10,989] [DEBUG] [Tool:open] Opening folder
+[2026-03-29 04:52:11,052] [DEBUG] [Executor] RESULT: {'status': 'success', 'data': 'Открыта папка: C:/тестис'}
+[2026-03-29 04:52:11,052] [INFO] [Executor] EXECUTION FINISHED
+[2026-03-29 04:52:18,077] [INFO] [Agent] USER INPUT: удали файл мошонка в этой папке
+[2026-03-29 04:52:18,077] [INFO] [Interpreter] INTERPRET INPUT: удали файл мошонка в этой папке
+[2026-03-29 04:52:18,078] [DEBUG] [Interpreter] PROMPT: {'system': '\nТы извлекаешь intent и entities.\nВАЖНО:\n- НЕ переводи слова пользователя\n- СОХРАНЯЙ оригинальный язык (русский/английский)\n- "тестис" ≠ "testis"\n- возвращай текст КАК ЕСТЬ\n\nФормат:\n{\n  "intent": "string",\n  "entities": {}\n}\n\nПРАВИЛА:\n\n1. Используй:\n   file.name\n   folder.name\n\n2. Контекст:\n   "эта папка", "в этой папке" → folder.ref="last"\n   "этот файл" → file.ref="last"\n\n3. Тип файла:\n   python → type="python"\n   json → type="json"\n   текстовый → type="txt"\n\nНЕ придумывай лишние поля.\n', 'user': 'удали файл мошонка в этой папке', 'context': ''}
+[2026-03-29 04:52:19,137] [DEBUG] [Interpreter] RAW RESPONSE: {
+  "intent": "delete",
+  "entities": {
+    "file": {"name": "мошонка", "ref": "last", "type": null}
+  }
+}
+[2026-03-29 04:52:19,137] [DEBUG] [Interpreter] PARSED BEFORE NORMALIZE: {'intent': 'delete', 'entities': {'file': {'name': 'мошонка', 'ref': 'last', 'type': None}}}
+[2026-03-29 04:52:19,137] [DEBUG] [Interpreter] FOLDER REF DETECTED
+[2026-03-29 04:52:19,137] [DEBUG] [Interpreter] EXTENSION APPLIED: мошонка.txt
+[2026-03-29 04:52:19,137] [DEBUG] [Interpreter] REMOVE REF FROM FILE (name present)
+[2026-03-29 04:52:19,137] [DEBUG] [Interpreter] PARSED AFTER NORMALIZE: {'intent': 'delete', 'entities': {'file': {'name': 'мошонка.txt', 'type': None}, 'folder': {'ref': 'last'}}}
+[2026-03-29 04:52:19,137] [DEBUG] [Planner] INTENT: delete
+[2026-03-29 04:52:19,137] [DEBUG] [Planner] ENTITIES: {'file': {'name': 'мошонка.txt', 'type': None}, 'folder': {'name': 'тестис'}}
+[2026-03-29 04:52:19,137] [DEBUG] [Planner] FINAL PLAN: [{'tool': 'find', 'output': 'path', 'args': {'name': 'мошонка.txt', 'type': 'file', 'path': '__SELECTED__'}}, {'tool': 'delete', 'args': {'path': 'path'}}]
+[2026-03-29 04:52:19,137] [DEBUG] [Router] ROUTING START
+[2026-03-29 04:52:19,137] [DEBUG] [Router] ROUTE: find → fast
+[2026-03-29 04:52:19,137] [DEBUG] [Router] ROUTE: delete → fast
+[2026-03-29 04:52:19,137] [INFO] [Executor] EXECUTION START
+[2026-03-29 04:52:19,137] [DEBUG] [Executor] RUN TOOL: find | ARGS: {'name': 'мошонка.txt', 'type': 'file', 'path': None}
+[2026-03-29 04:52:29,685] [DEBUG] [Executor] RESULT: {'status': 'success', 'data': 'C:/тестис\\мошонка.txt'}
+[2026-03-29 04:52:29,685] [DEBUG] [Executor] RUN TOOL: delete | ARGS: {'path': 'C:/тестис\\мошонка.txt'}
+[2026-03-29 04:52:29,685] [INFO] [Tool:delete] DELETE: C:/тестис\мошонка.txt
+[2026-03-29 04:52:29,685] [DEBUG] [Executor] RESULT: {'status': 'success', 'data': 'C:/тестис\\мошонка.txt'}
+[2026-03-29 04:52:29,685] [INFO] [Executor] EXECUTION FINISHED
