@@ -182,8 +182,9 @@ class FindTool(BaseTool):
                         pass
 
                     if score > 0.4:
-                        logger.debug(f"MATCH: {full_path} | score={round(score, 2)}")
                         results.append((score, full_path))
+                    if score > 1:
+                        logger.debug(f"MATCH: {full_path} | score={round(score, 2)}")
 
         except PermissionError as e:
             logger.warning(f"Permission denied: {e}")

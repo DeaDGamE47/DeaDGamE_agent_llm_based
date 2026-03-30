@@ -59,7 +59,7 @@ def main():
     memory = MemoryManager()
 
     interpreter = Interpreter(llm_manager)
-    planner = Planner(memory)  # ✅ ФИКС: передаём memory
+    planner = Planner()  
     router = Router()
 
     # 🔥 EXECUTOR — тупой, только tool_registry

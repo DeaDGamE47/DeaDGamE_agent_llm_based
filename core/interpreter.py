@@ -152,8 +152,29 @@ class Interpreter:
             "confidence": parsed.confidence
         }
 
-        # intent aliases
+        # =========================================================
+        # 🔥 INTENT ALIASES
+        # =========================================================
         
+        intent_aliases = {
+            "create": ["make", "new", "создай", "сделай", "новый"],
+            "delete": ["remove", "del", "удали", "удалить"],
+            "find": ["search", "locate", "найди", "поиск", "где"],
+            "open": ["show", "display", "открой", "покажи"],
+            "edit": ["change", "modify", "измени", "редактируй"],
+            "read": ["get", "fetch", "прочитай", "выведи"],
+            "chat": ["talk", "ask", "поговори", "спроси"]
+        }
+        
+        current_intent = result.get("intent", "chat")
+        text_lower = user_input.lower()
+        
+        # Проверяем алиасы
+        for canonical, aliases in intent_aliases.items():
+            if current_intent in aliases or any(alias in text_lower for alias in aliases):
+                result["intent"] = canonical
+                logger.debug(f"Intent aliased: {current_intent} → {canonical}")
+                break
 
         entities = result.get("entities", {})
         if not isinstance(entities, dict):

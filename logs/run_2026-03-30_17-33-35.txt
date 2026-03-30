@@ -1,6 +1,0 @@
-[2026-03-30 17:33:36,766] [INFO] [LLMManager] Ollama connection OK, model: llama3
-[2026-03-30 17:33:36,767] [INFO] [LLMManager] Interpreter model (llama3) initialized
-[2026-03-30 17:33:36,770] [INFO] [LLMManager] Ollama connection OK, model: llama3.1
-[2026-03-30 17:33:36,770] [INFO] [LLMManager] Chat model (llama3.1) initialized
-[2026-03-30 17:33:36,773] [INFO] [Tool:create] CreateTool backup dir: C:\Users\sunny\AppData\Local\Temp\agent_undo\created
-[2026-03-30 17:33:36,775] [INFO] [Tool:delete] DeleteTool backup dir: C:\Users\sunny\AppData\Local\Temp\agent_undo\deleted
