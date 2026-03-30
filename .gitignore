@@ -14,7 +14,8 @@ venv/
 .DS_Store
 
 # Logs
-*.log
+*.txt
+*.json
 
 # RAG index (если большой)
 memory/rag/index/

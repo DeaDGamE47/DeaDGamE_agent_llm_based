@@ -153,19 +153,7 @@ class Interpreter:
         }
 
         # intent aliases
-        aliases = {
-            "open_file": "open",
-            "open_folder": "open",
-            "delete_file": "delete",
-            "remove": "delete",
-            "createfile": "create",
-            "createfolder": "create",
-            "create_file": "create",
-            "create_folder": "create",
-        }
-
-        if result["intent"] in aliases:
-            result["intent"] = aliases[result["intent"]]
+        
 
         entities = result.get("entities", {})
         if not isinstance(entities, dict):

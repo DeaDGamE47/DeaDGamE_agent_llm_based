@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from pydantic import BaseModel
 
@@ -14,6 +14,7 @@ class ToolResponse(BaseModel):
     error: Optional[str] = None
     undo_data: Optional[Dict[str, Any]] = None
     message: Optional[str] = None
+    options: Optional[List[str]] = None  # 🔥 Для need_clarification
     meta: Optional[Dict[str, Any]] = None
 
 
@@ -72,10 +73,11 @@ class BaseTool(ABC):
             meta=meta
         ).model_dump()
 
-    def need_clarification(self, options, message=None):
+    def need_clarification(self, options: List[str], message=None):
+        # 🔥 FIX: options теперь в корне, не в data
         return ToolResponse(
             status="need_clarification",
-            data={"options": options},
+            options=options,  # 🔥 В корне для executor
             message=message
         ).model_dump()
 
