@@ -41,6 +41,9 @@ class Interpreter:
 
     def __init__(self, llm_manager):
         self.llm_manager = llm_manager
+        # 🔥 NEW: Хранение последнего контекста для разрешения ref
+        self.last_folder: Optional[str] = None
+        self.last_file: Optional[str] = None
 
     # =========================================================
     # MAIN
@@ -57,10 +60,13 @@ class Interpreter:
             logger.error("Model not available")
             return self._fallback(user_input)
 
-        prompt = self._build_prompt(user_input, thread_context)
+        # 🔥 NEW: Добавляем контекст в промпт если есть сохранённые пути
+        enriched_context = self._build_context_string()
+        
+        prompt = self._build_prompt(user_input, thread_context, enriched_context)
         logger.debug(f"PROMPT: {prompt}")
 
-        # 🔥 NEW: Retry logic на уровне LLM
+        # Retry logic на уровне LLM
         raw = None
         for attempt in range(3):
             raw = model.generate(prompt)
@@ -74,45 +80,83 @@ class Interpreter:
 
         logger.debug(f"RAW RESPONSE: {raw}")
 
-        # 🔥 NEW: Pydantic валидация
+        # Pydantic валидация
         parsed = self._parse_and_validate(raw, user_input)
         
         if not parsed:
             return self._fallback(user_input)
 
-        # Нормализация (сохраняем существующую логику)
+        # Нормализация с разрешением контекстных ссылок
         normalized = self._normalize(parsed, user_input)
         logger.debug(f"NORMALIZED: {normalized}")
 
+        # 🔥 NEW: Обновляем last_* после успешной интерпретации
+        self._update_memory(normalized)
+
         return normalized
+
+    def _build_context_string(self) -> str:
+        """Строит строку контекста из сохранённых путей."""
+        parts = []
+        if self.last_folder:
+            parts.append(f'Последняя папка: "{self.last_folder}"')
+        if self.last_file:
+            parts.append(f'Последний файл: "{self.last_file}"')
+        return "\n".join(parts) if parts else ""
+
+    def _update_memory(self, normalized: Dict):
+        """Обновляет память последних использованных путей."""
+        folder = normalized.get("folder", {})
+        if folder.get("name") and not folder.get("ref"):
+            self.last_folder = folder["name"]
+            logger.debug(f"MEMORY: last_folder = {self.last_folder}")
+        
+        file = normalized.get("file", {})
+        if file.get("name") and not file.get("ref"):
+            self.last_file = file["name"]
+            logger.debug(f"MEMORY: last_file = {self.last_file}")
 
     # =========================================================
     # PROMPT
     # =========================================================
-    def _build_prompt(self, user_input, thread_context):
+    def _build_prompt(self, user_input, thread_context, enriched_context=""):
+        context_section = ""
+        if enriched_context:
+            context_section = f"\nКОНТЕКСТ (используй при разрешении ссылок):\n{enriched_context}\n"
+        
+        if thread_context:
+            context_section += f"\nТЕКУЩИЙ КОНТЕКСТ:\n{thread_context}\n"
+
         return {
-            "system": """Ты извлекаешь intent и entities из запроса пользователя.
+            "system": f"""Ты извлекаешь intent и entities из запроса пользователя.
 
 ВАЖНЫЕ ПРАВИЛА:
 1. НЕ переводи слова пользователя - сохраняй оригинальный язык
 2. "тестис" ≠ "testis" - сохраняй текст КАК ЕСТЬ
 3. Используй строгий JSON формат без markdown
 
+КОНТЕКСТНЫЕ ССЫЛКИ (КРИТИЧНО):
+- "эта папка", "в этой папке", "там", "сюда" → folder: {{ "ref": "last" }} (БЕЗ name!)
+- "этот файл", "его", "в него" → file: {{ "ref": "last" }} (БЕЗ name!)
+- Если пользователь говорит "создай файл X в этой папке":
+  - file: {{ "name": "X", "type": "..." }}
+  - folder: {{ "ref": "last" }} (только ref, без name!)
+
 ФОРМАТ ОТВЕТА (только JSON):
-{
+{{
     "intent": "string",
-    "entities": {
-        "file": {"name": "string", "type": "string", "ref": "last"},
-        "folder": {"name": "string", "ref": "last", "start_path": "C:/"}
-    }
-}
+    "entities": {{
+        "file": {{"name": "string", "type": "string", "ref": "last"}},
+        "folder": {{"name": "string", "ref": "last", "start_path": "C:/"}}
+    }}
+}}
 
 ПРАВИЛА ENTITIES:
-- file.name: имя файла с расширением
+- file.name: имя файла с расширением (только если явно назван)
 - file.type: python|json|txt|docx|etc
 - file.ref: "last" только для ссылок типа "этот файл"
-- folder.name: имя папки
-- folder.ref: "last" для "эта папка", "в этой папке"
+- folder.name: имя папки (только если явно названа)
+- folder.ref: "last" для "эта папка", "в этой папке", "там"
 - folder.start_path: диск (C:/, D:/)
 
 INTENT ALIASES:
@@ -123,9 +167,8 @@ INTENT ALIASES:
 - write_file → "write_file"
 - create_and_write_file → "create_and_write_file"
 
-НЕ придумывай лишние поля. Если не уверен - используй intent "chat".""",
-            "user": user_input,
-            "context": thread_context or ""
+НЕ придумывай лишние поля. Если не уверен - используй intent "chat".{context_section}""",
+            "user": user_input
         }
 
     # =========================================================
@@ -155,7 +198,6 @@ INTENT ALIASES:
                     parsed_data = json.loads(raw_text[start:end])
                 else:
                     # Попытка 3: Поиск в markdown блоках
-                    import re
                     json_match = re.search(r'```(?:json)?\s*({.*?})\s*```', raw_text, re.DOTALL)
                     if json_match:
                         parsed_data = json.loads(json_match.group(1))
@@ -204,7 +246,7 @@ INTENT ALIASES:
         return data
 
     # =========================================================
-    # NORMALIZE (СОХРАНЯЕМ СУЩЕСТВУЮЩУЮ ЛОГИКУ)
+    # NORMALIZE (СОХРАНЯЕМ СУЩЕСТВУЮЩУЮ ЛОГИКУ + FIX REF)
     # =========================================================
     def _normalize(self, parsed: InterpretationResult, user_input: str) -> Dict[str, Any]:
         """
@@ -272,14 +314,27 @@ INTENT ALIASES:
 
         text = user_input.lower()
 
-        # Context detection (ref)
-        if any(x in text for x in ["эта папка", "в этой папке", "там", "здесь"]):
-            normalized.setdefault("folder", {})["ref"] = "last"
-            logger.debug("FOLDER REF DETECTED")
+        # 🔥 NEW: Разрешение контекстных ссылок через память
+        folder_entity = normalized.get("folder", {})
+        
+        # Если LLM дала ref="last", подставляем реальный путь из памяти
+        if folder_entity.get("ref") == "last" and self.last_folder:
+            folder_entity["name"] = self.last_folder
+            folder_entity.pop("ref", None)
+            logger.debug(f"RESOLVED folder ref → {self.last_folder}")
 
-        if any(x in text for x in ["этот файл", "его"]):
-            normalized.setdefault("file", {})["ref"] = "last"
-            logger.debug("FILE REF DETECTED")
+        # Если не определена папка, но есть контекстные слова
+        elif any(x in text for x in ["эта папка", "в этой папке", "там", "сюда", "здесь"]):
+            if self.last_folder and not folder_entity.get("name"):
+                normalized["folder"] = {"name": self.last_folder}
+                logger.debug(f"FOLDER FROM MEMORY: {self.last_folder}")
+
+        # Аналогично для файлов
+        file_entity = normalized.get("file", {})
+        if file_entity.get("ref") == "last" and self.last_file:
+            file_entity["name"] = self.last_file
+            file_entity.pop("ref", None)
+            logger.debug(f"RESOLVED file ref → {self.last_file}")
 
         # Drive detection
         match = re.search(r'([a-zA-Z]):', user_input)
@@ -309,17 +364,6 @@ INTENT ALIASES:
                 ext = FILE_TYPE_MAP.get(file_type, ".txt")
                 file_entity["name"] = name + ext
                 logger.debug(f"EXTENSION APPLIED: {file_entity['name']}")
-
-        # Fix ref + name conflict
-        file_entity = normalized.get("file")
-        if file_entity and file_entity.get("ref") and file_entity.get("name"):
-            logger.debug("REMOVE REF FROM FILE (name present)")
-            file_entity.pop("ref", None)
-
-        folder_entity = normalized.get("folder")
-        if folder_entity and folder_entity.get("ref") and folder_entity.get("name"):
-            logger.debug("REMOVE REF FROM FOLDER (name present)")
-            folder_entity.pop("ref", None)
 
         # File name fallback (поиск "файл X")
         file_entity = normalized.get("file")
