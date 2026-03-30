@@ -1,0 +1,47 @@
+[2026-03-30 12:28:57,125] [INFO] [Agent] USER INPUT: созай файл мошонка в папке тестис
+[2026-03-30 12:28:57,125] [INFO] [Interpreter] INTERPRET INPUT: созай файл мошонка в папке тестис
+[2026-03-30 12:28:57,126] [DEBUG] [Interpreter] PROMPT: {'system': '\nТы извлекаешь intent и entities.\nВАЖНО:\n- НЕ переводи слова пользователя\n- СОХРАНЯЙ оригинальный язык (русский/английский)\n- "тестис" ≠ "testis"\n- возвращай текст КАК ЕСТЬ\n\nФормат:\n{\n  "intent": "string",\n  "entities": {}\n}\n\nПРАВИЛА:\n\n1. Используй:\n   file.name\n   folder.name\n\n2. Контекст:\n   "эта папка", "в этой папке" → folder.ref="last"\n   "этот файл" → file.ref="last"\n\n3. Тип файла:\n   python → type="python"\n   json → type="json"\n   текстовый → type="txt"\n\nНЕ придумывай лишние поля.\n', 'user': 'созай файл мошонка в папке тестис', 'context': ''}
+[2026-03-30 12:29:05,979] [DEBUG] [Interpreter] RAW RESPONSE: {
+  "intent": "create file",
+  "entities": {
+    "file.name": "мошонка",
+    "folder.ref": "тестис"
+  }
+}
+[2026-03-30 12:29:05,980] [DEBUG] [Interpreter] PARSED BEFORE NORMALIZE: {'intent': 'create file', 'entities': {'file.name': 'мошонка', 'folder.ref': 'тестис'}}
+[2026-03-30 12:29:05,980] [DEBUG] [Interpreter] INTENT NORMALIZED: create file → create_file
+[2026-03-30 12:29:05,980] [DEBUG] [Interpreter] EXTENSION APPLIED: мошонка.txt
+[2026-03-30 12:29:05,980] [DEBUG] [Interpreter] PARSED AFTER NORMALIZE: {'intent': 'create_file', 'entities': {'file': {'name': 'мошонка.txt'}, 'folder': {'ref': 'тестис'}}}
+[2026-03-30 12:29:05,980] [DEBUG] [Planner] INTENT: create_file
+[2026-03-30 12:29:05,980] [DEBUG] [Planner] ENTITIES: {'file': {'name': 'мошонка.txt'}, 'folder': {'ref': 'тестис'}}
+[2026-03-30 12:29:05,981] [DEBUG] [Planner] FINAL PLAN: [{'tool': 'find', 'output': 'folder_path', 'args': {'name': None, 'type': 'folder', 'path': '__SELECTED__'}}, {'tool': 'join_path', 'output': 'path', 'args': {'folder_path': 'folder_path', 'file_name': 'мошонка.txt'}}, {'tool': 'create_file', 'args': {'path': 'path'}}]
+[2026-03-30 12:29:05,981] [DEBUG] [Router] ROUTING START
+[2026-03-30 12:29:05,981] [DEBUG] [Router] ROUTE: find → fast
+[2026-03-30 12:29:05,981] [DEBUG] [Router] ROUTE: join_path → default
+[2026-03-30 12:29:05,981] [DEBUG] [Router] ROUTE: create_file → code
+[2026-03-30 12:29:05,981] [INFO] [Executor] EXECUTION START
+[2026-03-30 12:29:05,981] [DEBUG] [Executor] RUN TOOL: find | ARGS: {'name': None, 'type': 'folder', 'path': None}
+[2026-03-30 12:29:16,306] [INFO] [Agent] USER INPUT: содай вайл мошонка в папке тестис
+[2026-03-30 12:29:16,307] [INFO] [Interpreter] INTERPRET INPUT: содай вайл мошонка в папке тестис
+[2026-03-30 12:29:16,307] [DEBUG] [Interpreter] PROMPT: {'system': '\nТы извлекаешь intent и entities.\nВАЖНО:\n- НЕ переводи слова пользователя\n- СОХРАНЯЙ оригинальный язык (русский/английский)\n- "тестис" ≠ "testis"\n- возвращай текст КАК ЕСТЬ\n\nФормат:\n{\n  "intent": "string",\n  "entities": {}\n}\n\nПРАВИЛА:\n\n1. Используй:\n   file.name\n   folder.name\n\n2. Контекст:\n   "эта папка", "в этой папке" → folder.ref="last"\n   "этот файл" → file.ref="last"\n\n3. Тип файла:\n   python → type="python"\n   json → type="json"\n   текстовый → type="txt"\n\nНЕ придумывай лишние поля.\n', 'user': 'содай вайл мошонка в папке тестис', 'context': ''}
+[2026-03-30 12:29:18,100] [DEBUG] [Interpreter] RAW RESPONSE: {
+  "intent": "command",
+  "entities": {
+    "folder": {
+      "name": "тестис",
+      "ref": "last"
+    },
+    "file": {
+      "name": "мошонка",
+      "ref": "create"
+    }
+  }
+}
+[2026-03-30 12:29:18,101] [DEBUG] [Interpreter] PARSED BEFORE NORMALIZE: {'intent': 'command', 'entities': {'folder': {'name': 'тестис', 'ref': 'last'}, 'file': {'name': 'мошонка', 'ref': 'create'}}}
+[2026-03-30 12:29:18,101] [DEBUG] [Interpreter] EXTENSION APPLIED: мошонка.txt
+[2026-03-30 12:29:18,101] [DEBUG] [Interpreter] REMOVE REF FROM FILE (name present)
+[2026-03-30 12:29:18,101] [DEBUG] [Interpreter] REMOVE REF FROM FOLDER (name present)
+[2026-03-30 12:29:18,101] [DEBUG] [Interpreter] PARSED AFTER NORMALIZE: {'intent': 'command', 'entities': {'folder': {'name': 'тестис'}, 'file': {'name': 'мошонка.txt'}}}
+[2026-03-30 12:29:18,101] [DEBUG] [Planner] INTENT: command
+[2026-03-30 12:29:18,101] [DEBUG] [Planner] ENTITIES: {'folder': {'name': 'тестис'}, 'file': {'name': 'мошонка.txt'}}
+[2026-03-30 12:29:18,101] [WARNING] [Planner] NO TEMPLATE: command
