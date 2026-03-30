@@ -9,36 +9,26 @@ class ListTool(BaseTool):
 
     name = "list"
     description = "Показывает содержимое папки (текущей или указанной)"
-    required_args = []  # 🔥 path теперь не обязательный
-    optional_args = ["path"]  # 🔥 можно не указывать (используется текущая)
+
+    required_args = []
+    optional_args = ["path"]
 
     category = "file"
     risk_level = "low"
 
     def run(self, path: str = None):
+
         logger.info(f"LIST: {path}")
 
-        # -------------------------
-        # 🔥 если путь не указан — используем текущую директорию
-        # -------------------------
         if not path:
             path = os.getcwd()
             logger.debug(f"Using current directory: {path}")
 
-        # -------------------------
-        # 🔥 проверки
-        # -------------------------
         if not os.path.exists(path):
-            return {
-                "status": "error",
-                "error": f"Путь не существует: {path}"
-            }
+            return self.error(f"Путь не существует: {path}")
 
         if not os.path.isdir(path):
-            return {
-                "status": "error",
-                "error": f"Это не папка: {path}"
-            }
+            return self.error(f"Это не папка: {path}")
 
         try:
             items = os.listdir(path)
@@ -54,15 +44,9 @@ class ListTool(BaseTool):
                 else:
                     files.append(item)
 
-            # -------------------------
-            # 🔥 сортировка
-            # -------------------------
             folders.sort()
             files.sort()
 
-            # -------------------------
-            # 🔥 форматированный вывод
-            # -------------------------
             result_lines = []
 
             if folders:
@@ -76,22 +60,19 @@ class ListTool(BaseTool):
             if not result_lines:
                 result_lines.append("Папка пустая")
 
-            return {
-                "status": "success",
-                "data": {
+            message = "\n".join(result_lines)
+
+            return self.success(
+                data={
                     "path": path,
                     "type": "folder",
                     "folders": folders,
                     "files": files,
-                    "message": "\n".join(result_lines),
                     "total_count": len(folders) + len(files)
-                }
-            }
+                },
+                message=message
+            )
 
         except Exception as e:
             logger.exception("list error")
-
-            return {
-                "status": "error",
-                "error": str(e)
-            }
+            return self.error(str(e))

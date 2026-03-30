@@ -19,12 +19,18 @@ class Agent:
     # =========================================================
     # MAIN
     # =========================================================
+
     def handle_input(self, user_input):
+
         logger.info(f"USER INPUT: {user_input}")
 
-        # -------------------------
-        # 🔥 ОБРАБОТКА ВЫБОРА
-        # -------------------------
+        # 🔥 сохраняем сообщение пользователя
+        self.memory.save_message("user", user_input)
+
+        # =====================================================
+        # ОБРАБОТКА ВЫБОРА (multiple results)
+        # =====================================================
+
         if self.pending_options:
 
             if user_input.isdigit():
@@ -32,6 +38,7 @@ class Agent:
 
                 if 0 <= idx < len(self.pending_options):
                     selected = self.pending_options[idx]
+
                     logger.debug(f"OPTION SELECTED: {selected}")
 
                     result = self.executor.execute(
@@ -39,104 +46,83 @@ class Agent:
                         selected_option=selected
                     )
 
+                    # сбрасываем pending
                     self.pending_options = None
                     self.pending_plan = None
 
-                    # 🔥 NEW: Обновляем память после выполнения выбора
-                    self._update_interpreter_memory(result, selected)
+                    # 🔥 сохраняем ответ агента
+                    self.memory.save_message("agent", result)
 
                     return result
 
             return "❌ Неверный выбор"
 
-        # -------------------------
-        # 🔥 PIPELINE
-        # -------------------------
-        interpreted = self.interpreter.interpret(user_input)
+        # =====================================================
+        # PIPELINE
+        # =====================================================
 
+        # 🔥 (опционально позже сюда добавим RAG)
+        thread_context = None
+
+        interpreted = self.interpreter.interpret(
+            user_input,
+            thread_context=thread_context
+        )
+
+        logger.debug(f"INTERPRETED: {interpreted}")
+
+        # 🔥 контекст (ref=last и т.д.)
         interpreted = self.context.resolve(interpreted)
+
+        logger.debug(f"RESOLVED: {interpreted}")
+
+        # 🔥 сохраняем entities в память
+        self.memory.update_entities(interpreted.get("entities", {}))
+
+        # -------------------------
+        # PLAN
+        # -------------------------
 
         plan = self.planner.build_plan(interpreted)
 
         if not plan:
             return "❌ План не построен"
 
+        logger.debug(f"PLAN: {plan}")
+
+        # -------------------------
+        # ROUTER
+        # -------------------------
+
         plan = self.router.route(plan)
+
+        # -------------------------
+        # EXECUTION
+        # -------------------------
 
         result = self.executor.execute(plan)
 
-        # -------------------------
-        # 🔥 MULTIPLE
-        # -------------------------
+        # =====================================================
+        # NEED CLARIFICATION
+        # =====================================================
+
         if result.get("status") == "need_clarification":
-            self.pending_options = result["options"]
+
+            self.pending_options = result.get("options", [])
             self.pending_plan = plan
+
+            logger.info(f"WAITING USER CHOICE: {self.pending_options}")
 
             return {
                 "status": "need_clarification",
-                "options": result["options"]
+                "options": self.pending_options
             }
 
-        # 🔥 NEW: Обновляем память Interpreter после успешного выполнения
-        self._update_interpreter_memory(result, None)
+        # =====================================================
+        # SUCCESS / FINAL
+        # =====================================================
 
-        # Обновляем общую память
-        self.memory.update_entities(interpreted.get("entities", {}))
+        # 🔥 сохраняем ответ агента
+        self.memory.save_message("agent", result)
 
         return result
-
-    def _update_interpreter_memory(self, result, selected_path=None):
-        """
-        Извлекает пути из результата и обновляет interpreter.last_folder/last_file.
-        """
-        if result.get("status") != "success":
-            return
-
-        data = result.get("data", {})
-
-        # Если был выбор — используем selected_path
-        if selected_path:
-            # Определяем файл или папка
-            if isinstance(selected_path, str):
-                if selected_path.endswith(('/', '\\')) or '.' not in selected_path.split('/')[-1].split('\\')[-1]:
-                    self.interpreter.last_folder = selected_path.rstrip('/\\')
-                    logger.debug(f"AGENT MEMORY: last_folder = {self.interpreter.last_folder}")
-                else:
-                    self.interpreter.last_file = selected_path
-                    self.interpreter.last_folder = selected_path.rsplit('/', 1)[0].rsplit('\\', 1)[0]
-                    logger.debug(f"AGENT MEMORY: last_file = {self.interpreter.last_file}, last_folder = {self.interpreter.last_folder}")
-            return
-
-        # Извлекаем из data (может быть dict или строка)
-        if isinstance(data, dict):
-            # Проверяем common keys
-            for key in ["path", "folder_path", "file_path"]:
-                if key in data and data[key]:
-                    path = data[key]
-                    if isinstance(path, str):
-                        if key == "folder_path" or (key == "path" and not path.endswith(('.txt', '.py', '.json', '.md', '.docx'))):
-                            self.interpreter.last_folder = path.rstrip('/\\')
-                            logger.debug(f"AGENT MEMORY: last_folder = {self.interpreter.last_folder}")
-                        else:
-                            self.interpreter.last_file = path
-                            # Извлекаем папку из пути файла
-                            folder = path.rsplit('/', 1)[0].rsplit('\\', 1)[0] if '/' in path or '\\' in path else ""
-                            if folder:
-                                self.interpreter.last_folder = folder
-                            logger.debug(f"AGENT MEMORY: last_file = {self.interpreter.last_file}, last_folder = {self.interpreter.last_folder}")
-                        break
-
-        elif isinstance(data, str):
-            # Простая строка — путь
-            if data:
-                # Проверяем по расширению
-                ext = data.split('.')[-1].lower() if '.' in data else ''
-                if ext in ['txt', 'py', 'json', 'md', 'docx', 'pdf']:
-                    self.interpreter.last_file = data
-                    folder = data.rsplit('/', 1)[0].rsplit('\\', 1)[0] if '/' in data or '\\' in data else ""
-                    if folder:
-                        self.interpreter.last_folder = folder
-                    logger.debug(f"AGENT MEMORY: last_file = {data}, last_folder = {self.interpreter.last_folder}")
-                else:
-                    self.interpreter.last_folder = data.rstrip('/\\')
-                    logger.debug(f"AGENT MEMORY: last_folder = {data}")

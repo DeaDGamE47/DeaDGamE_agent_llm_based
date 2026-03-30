@@ -11,29 +11,26 @@ class RunTool(BaseTool):
 
     name = "run"
     description = "Запускает файл или программу"
+
     required_args = ["path"]
+    optional_args = ["args"]
 
     category = "system"
     risk_level = "high"
     requires_confirmation = True
 
     def run(self, path: str, args: list = None):
+
         logger.info(f"RUN: {path} {args}")
 
         # -------------------------
         # 🔥 проверки
         # -------------------------
         if not path:
-            return {
-                "status": "error",
-                "error": "Не передан путь"
-            }
+            return self.error("Не передан путь")
 
         if not os.path.exists(path):
-            return {
-                "status": "error",
-                "error": f"Файл не существует: {path}"
-            }
+            return self.error(f"Файл не существует: {path}")
 
         try:
             # -------------------------
@@ -54,30 +51,32 @@ class RunTool(BaseTool):
                 shell=True
             )
 
-            logger.debug(f"STDOUT: {result.stdout}")
-            logger.debug(f"STDERR: {result.stderr}")
+            stdout = result.stdout.strip()
+            stderr = result.stderr.strip()
+
+            logger.debug(f"STDOUT: {stdout}")
+            logger.debug(f"STDERR: {stderr}")
 
             # -------------------------
             # 🔥 успешный запуск
             # -------------------------
             if result.returncode == 0:
-                return {
-                    "status": "success",
-                    "data": result.stdout.strip() or f"Выполнено: {path}"
-                }
+                return self.success(
+                    data={
+                        "path": path,
+                        "output": stdout
+                    },
+                    message=stdout or f"Выполнено: {path}",
+                    meta={
+                        "return_code": result.returncode
+                    }
+                )
 
             # -------------------------
             # 🔥 ошибка выполнения
             # -------------------------
-            return {
-                "status": "error",
-                "error": result.stderr.strip() or "Ошибка выполнения"
-            }
+            return self.error(stderr or "Ошибка выполнения")
 
         except Exception as e:
             logger.exception("run error")
-
-            return {
-                "status": "error",
-                "error": str(e)
-            }
+            return self.error(str(e))
