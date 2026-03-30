@@ -5,7 +5,9 @@ logger = setup_logger("Planner")
 
 class Planner:
 
-    def __init__(self):
+    def __init__(self, memory):
+        self.memory = memory
+
         self.templates = {
 
             # -------------------------
@@ -13,7 +15,7 @@ class Planner:
             # -------------------------
             "open": [
                 {"tool": "find", "use": "folder", "output": "path"},
-                {"tool": "open", "args": {"path": "path"}}
+                {"tool": "open", "args": {"path": "$path"}}
             ],
 
             # -------------------------
@@ -21,7 +23,7 @@ class Planner:
             # -------------------------
             "show_folder": [
                 {"tool": "find", "use": "folder", "output": "path"},
-                {"tool": "list", "args": {"path": "path"}}
+                {"tool": "list", "args": {"path": "$path"}}
             ],
 
             # -------------------------
@@ -29,16 +31,16 @@ class Planner:
             # -------------------------
             "delete": [
                 {"tool": "find", "use": "file", "output": "path"},
-                {"tool": "delete", "args": {"path": "path"}}
+                {"tool": "delete", "args": {"path": "$path"}}
             ],
 
             # -------------------------
             # CREATE FILE
             # -------------------------
-            "create_file": [
+            "create": [
                 {"tool": "find", "use": "folder", "output": "folder_path"},
                 {"tool": "join_path", "output": "path"},
-                {"tool": "create_file", "args": {"path": "path"}}
+                {"tool": "create", "args": {"path": "$path"}}
             ],
 
             # -------------------------
@@ -46,7 +48,7 @@ class Planner:
             # -------------------------
             "write_file": [
                 {"tool": "find", "use": "file", "output": "path"},
-                {"tool": "write_file", "args": {"path": "path"}}
+                {"tool": "write_file", "args": {"path": "$path"}}
             ],
 
             # -------------------------
@@ -55,20 +57,27 @@ class Planner:
             "create_and_write_file": [
                 {"tool": "find", "use": "folder", "output": "folder_path"},
                 {"tool": "join_path", "output": "path"},
-                {"tool": "create_file", "args": {"path": "path"}},
-                {"tool": "write_file", "args": {"path": "path"}}
+                {"tool": "create", "args": {"path": "$path"}},
+                {"tool": "write_file", "args": {"path": "$path"}}
             ],
         }
 
     # =========================================================
     # MAIN
     # =========================================================
+
     def build_plan(self, interpreted):
+
         intent = interpreted.get("intent")
         entities = interpreted.get("entities", {})
 
         logger.debug(f"INTENT: {intent}")
-        logger.debug(f"ENTITIES: {entities}")
+        logger.debug(f"ENTITIES BEFORE: {entities}")
+
+        # 🔥 MEMORY INJECTION
+        entities = self._inject_memory(entities)
+
+        logger.debug(f"ENTITIES AFTER MEMORY: {entities}")
 
         template = self.templates.get(intent)
 
@@ -79,9 +88,31 @@ class Planner:
         return self._apply(template, entities)
 
     # =========================================================
+    # MEMORY INJECTION
+    # =========================================================
+
+    def _inject_memory(self, entities):
+
+        if "folder" not in entities:
+            last_folder = self.memory.get_last_folder()
+            if last_folder:
+                logger.debug(f"USING MEMORY folder: {last_folder}")
+                entities["folder"] = {"name": last_folder}
+
+        if "file" not in entities:
+            last_file = self.memory.get_last_file()
+            if last_file:
+                logger.debug(f"USING MEMORY file: {last_file}")
+                entities["file"] = {"name": last_file}
+
+        return entities
+
+    # =========================================================
     # APPLY RULES
     # =========================================================
+
     def _apply(self, plan, entities):
+
         result = []
 
         file_e = entities.get("file")
@@ -96,15 +127,12 @@ class Planner:
             if "use" in step:
                 use_type = step.pop("use")
 
-                # 🔥 приоритет зависит от сценария
                 if step.get("tool") == "find":
 
-                    # если ищем папку (create_file)
                     if step.get("output") == "folder_path":
                         entity = folder_e
                         entity_type = "folder"
 
-                    # если обычный find файла
                     elif file_e:
                         entity = file_e
                         entity_type = "file"
@@ -122,7 +150,7 @@ class Planner:
                     "type": entity_type
                 }
 
-                # 🔥 КРИТИЧНО: поддержка выбора
+                # 🔥 поддержка выбора
                 if step["tool"] == "find":
                     step["args"]["path"] = "__SELECTED__"
 
@@ -130,11 +158,11 @@ class Planner:
                     step["args"]["start_path"] = entity["start_path"]
 
             # -------------------------
-            # JOIN PATH FIX
+            # JOIN PATH (НОВАЯ ЛОГИКА)
             # -------------------------
             if step["tool"] == "join_path":
                 step["args"] = {
-                    "folder_path": "folder_path",
+                    "folder_path": "$folder_path",   # 🔥 теперь переменная
                     "file_name": file_e.get("name") if file_e else None
                 }
 

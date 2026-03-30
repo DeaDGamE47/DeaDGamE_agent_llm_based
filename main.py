@@ -1,7 +1,6 @@
 import sys
 import os
 
-# чтобы корректно работали импорты
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from core.agent import Agent
@@ -11,64 +10,65 @@ from core.executor import Executor
 from core.router import Router
 from core.context import ContextResolver
 
-from memory.manager import Memory
+from memory.manager import MemoryManager
 from llm.llm_manager import LLMManager
 from tools.registry import ToolRegistry
 
 
+DEBUG = False
+
+
 def print_help():
-    """Выводит справку по командам."""
     print("""
-📋 Доступные команды:
-   отмени, undo     — отменить последнее действие
-   история, history — показать историю действий
-   помощь, help     — показать эту справку
-   выход, exit      — завершить работу
+📋 Команды:
+
+  помощь / help         — справка
+  выход / exit          — выход
+
+  undo / отмени         — откат действия
+  history               — история действий
+
+🧪 DEBUG:
+
+  mem                   — runtime memory
+  thread                — текущий диалог
+  state                 — dump памяти
+  last                  — last_file / last_folder
+  debug on/off          — включить debug
 """)
 
 
-def format_history(actions: list) -> str:
-    """Форматирует историю для вывода."""
-    if not actions:
-        return "История пуста"
-    
-    lines = ["\n📜 Последние действия:"]
-    for i, action in enumerate(actions, 1):
-        tool = action.get("tool_name", "unknown")
-        status = "✅" if action.get("result_status") == "success" else "❌"
-        timestamp = action.get("timestamp", "")[11:19]  # только время
-        lines.append(f"  {i}. [{timestamp}] {status} {tool}")
-    
-    return "\n".join(lines)
-
-
 def main():
+
+    global DEBUG
+
     print("🚀 Агент запущен\n")
-    print("Введите 'помощь' для списка команд")
 
     # =========================================================
-    # 🔧 INIT
+    # INIT
     # =========================================================
 
     llm_manager = LLMManager()
 
-    # tools
     registry = ToolRegistry()
     registry.auto_register()
 
-    print(f"🔧 Загруженные tools: {registry.list_tools()}")
+    print(f"🔧 tools: {registry.list_tools()}")
 
-    # core
+    # 🔥 MEMORY СОЗДАЁМ РАНЬШЕ
+    memory = MemoryManager()
+
     interpreter = Interpreter(llm_manager)
-    planner = Planner()
+    planner = Planner(memory)  # ✅ ФИКС
     router = Router()
-    executor = Executor(tool_registry=registry)
 
-    # memory + context
-    memory = Memory()
+    executor = Executor(
+        tool_registry=registry,
+        memory_manager=memory
+    )
+
     context = ContextResolver(memory)
 
-    # agent
     agent = Agent(
         interpreter=interpreter,
         planner=planner,
@@ -79,7 +79,7 @@ def main():
     )
 
     # =========================================================
-    # 🔄 LOOP
+    # LOOP
     # =========================================================
 
     while True:
@@ -89,83 +89,113 @@ def main():
             if not user_input:
                 continue
 
-            # -------------------------
-            # 🔥 SYSTEM COMMANDS
-            # -------------------------
             cmd = user_input.lower()
 
-            if cmd in ["exit", "quit", "выход", "стоп"]:
-                print("👋 Завершение работы")
+            # =================================================
+            # SYSTEM
+            # =================================================
+
+            if cmd in ["exit", "quit", "выход", "стоп", "пока"]:
+                print("👋 Пока")
                 break
 
-            if cmd in ["помощь", "help", "?"]:
+            if cmd in ["help", "помощь", "?"]:
                 print_help()
                 continue
 
-            if cmd in ["отмени", "undo", "откат"]:
-                # Прямой вызов undo через executor
-                undo_result = executor.undo_last()
-                
-                if undo_result.get("status") == "success":
-                    print(f"\n✅ {undo_result.get('data')}")
+            # =================================================
+            # DEBUG
+            # =================================================
+
+            if cmd == "debug on":
+                DEBUG = True
+                print("🧪 DEBUG ON")
+                continue
+
+            if cmd == "debug off":
+                DEBUG = False
+                print("🧪 DEBUG OFF")
+                continue
+
+            if cmd == "mem":
+                print("\n🧠 MEMORY STATE:")
+                print(memory.state)
+                continue
+
+            if cmd == "state":
+                print("\n🧠 FULL STATE:")
+                print(memory.dump_state())
+                continue
+
+            if cmd == "thread":
+                print("\n🧵 THREAD:")
+                for msg in memory.get_thread():
+                    print(f"{msg['role']}: {msg['content']}")
+                continue
+
+            if cmd == "last":
+                print("\n📂 LAST:")
+                print("file:", memory.get_last_file())
+                print("folder:", memory.get_last_folder())
+                continue
+
+            # =================================================
+            # ACTIONS
+            # =================================================
+
+            if cmd in ["undo", "отмени"]:
+                result = executor.undo_last()
+                print(result)
+                continue
+
+            if cmd in ["history"]:
+                if executor.history:
+                    history = executor.history.get_recent_actions(10)
+                    print(history)
                 else:
-                    print(f"\n❌ Не удалось отменить: {undo_result.get('error')}")
+                    print("История отключена")
                 continue
 
-            if cmd in ["история", "history", "лог"]:
-                # Показываем последние 10 действий
-                history = executor.get_history(limit=10)
-                print(format_history(history))
-                continue
+            # =================================================
+            # AGENT
+            # =================================================
 
-            # -------------------------
-            # 🔥 AGENT PROCESSING
-            # -------------------------
             result = agent.handle_input(user_input)
 
+            if DEBUG:
+                print("\n🧪 RAW RESULT:", result)
+
             # -------------------------
-            # 🔥 OUTPUT FORMAT
+            # OUTPUT
             # -------------------------
+
             if isinstance(result, dict):
+
                 if result.get("status") == "need_clarification":
                     print("\n🤖 Выбери вариант:")
                     for i, option in enumerate(result.get("options", []), 1):
                         print(f"{i}. {option}")
 
                 elif result.get("status") == "success":
-                    data = result.get("data")
-                    actions_count = result.get("actions_count", 0)
-                    
-                    # Форматируем вывод в зависимости от типа данных
-                    if isinstance(data, dict):
-                        # Множественный результат (контекст)
-                        print(f"\n🤖 Выполнено действий: {actions_count}")
-                        for key, value in data.items():
-                            print(f"  • {key}: {value}")
-                    else:
-                        # Простой результат
-                        print(f"\n🤖 {data}")
-                    
-                    # Подсказка про undo для write-операций
-                    if actions_count > 0:
-                        print(f"\n💡 Введите 'отмени' чтобы откатить")
+                    print("\n🤖 OK")
+                    print(result.get("data"))
 
                 elif result.get("status") == "cancelled":
-                    print(f"\n⚠️ {result.get('data')}")
+                    print("\n⚠️ Отменено")
 
                 else:
-                    print(f"\n❌ {result.get('error')}")
+                    print("\n❌", result.get("error"))
 
             else:
-                print(f"\n🤖 {result}")
+                print("\n🤖", result)
 
         except KeyboardInterrupt:
-            print("\n👋 Прервано пользователем")
+            print("\n👋 Выход")
             break
 
         except Exception as e:
-            print(f"\n❌ Ошибка: {e}")
+            print("\n❌ ERROR:", e)
 
 
 if __name__ == "__main__":
-    main()
+    main() 

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, ValidationError
 from utils.logger import setup_logger
 from utils.file_type_map import FILE_TYPE_MAP
 
+
 logger = setup_logger("Interpreter")
 
 
@@ -82,24 +83,30 @@ class Interpreter:
             "system": f"""Ты извлекаешь intent и entities из запроса пользователя.
 
 ВАЖНЫЕ ПРАВИЛА:
+
 1. НЕ переводи слова пользователя
 2. Сохраняй текст как есть
 3. Только JSON (без markdown)
 
-КОНТЕКСТНЫЕ ССЫЛКИ:
-- "эта папка", "там" → folder: {{ "ref": "last" }}
-- "этот файл", "его" → file: {{ "ref": "last" }}
+КОНТЕКСТ:
+
+- если пользователь говорит "эта папка", "там" → folder: {{}}
+- если "этот файл", "его" → file: {{}}
+
+НЕ используй ref вообще
 
 ФОРМАТ:
+
 {{
     "intent": "string",
     "entities": {{
-        "file": {{"name": "string", "type": "string", "ref": "last"}},
-        "folder": {{"name": "string", "ref": "last"}}
+        "file": {{"name": "string", "type": "string"}},
+        "folder": {{"name": "string"}}
     }}
 }}
 
 Если не уверен → intent = "chat"
+
 {context_section}""",
             "user": user_input
         }
@@ -145,13 +152,16 @@ class Interpreter:
             "confidence": parsed.confidence
         }
 
-        # Intent aliases
+        # intent aliases
         aliases = {
             "open_file": "open",
             "open_folder": "open",
             "delete_file": "delete",
             "remove": "delete",
-            "createfile": "create_file"
+            "createfile": "create",
+            "createfolder": "create",
+            "create_file": "create",
+            "create_folder": "create",
         }
 
         if result["intent"] in aliases:
@@ -172,7 +182,10 @@ class Interpreter:
 
         text = user_input.lower()
 
-        # 🔥 file type detect
+        # =========================================================
+        # 🔥 FILE TYPE DETECT
+        # =========================================================
+
         file_entity = normalized.get("file")
         if file_entity:
 

@@ -21,7 +21,7 @@ class Router:
             # -------------------------
             # 🔥 RULES
             # -------------------------
-            if tool in ["create_file", "write_file"]:
+            if tool in ["create", "write_file"]:
                 step["model"] = "code"
 
             elif tool in ["find", "open", "delete"]:

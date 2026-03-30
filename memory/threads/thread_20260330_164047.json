@@ -1,0 +1,25 @@
+[
+  {
+    "timestamp": "2026-03-30T16:40:59.465566",
+    "role": "user",
+    "content": "открой папку тестис"
+  },
+  {
+    "timestamp": "2026-03-30T16:41:12.878703",
+    "role": "agent",
+    "content": {
+      "status": "error",
+      "error": "_path_exists: path should be string, bytes, os.PathLike or integer, not dict"
+    }
+  },
+  {
+    "timestamp": "2026-03-30T16:41:19.050781",
+    "role": "user",
+    "content": "стоп"
+  },
+  {
+    "timestamp": "2026-03-30T16:41:22.260767",
+    "role": "user",
+    "content": "стоп"
+  }
+]

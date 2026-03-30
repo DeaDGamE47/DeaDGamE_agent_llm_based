@@ -1,5 +1,6 @@
 from utils.logger import setup_logger
 
+
 logger = setup_logger("Context")
 
 
@@ -11,48 +12,37 @@ class ContextResolver:
     def resolve(self, interpreted: dict) -> dict:
 
         entities = interpreted.get("entities", {})
-        memory_entities = self.memory.get("entities", {})
-        history = self.memory.get("history", [])
 
         logger.debug(f"RESOLVE INPUT: {entities}")
-        logger.debug(f"MEMORY ENTITIES: {memory_entities}")
 
         for key, value in list(entities.items()):
 
             if not isinstance(value, dict):
                 continue
 
-            # -------------------------
-            # 🔥 REF: LAST
-            # -------------------------
-            if value.get("ref") == "last":
+            # =========================================================
+            # 🔥 AUTO CONTEXT FROM MEMORY
+            # =========================================================
 
-                if key in memory_entities:
-                    entities[key] = memory_entities[key]
-                    logger.debug(f"RESOLVED {key}.ref=last → {entities[key]}")
-                    continue
+            # folder
+            if key == "folder" and not value.get("name"):
+                last_folder = self.memory.get("last_folder")
+
+                if last_folder:
+                    entities[key] = {"name": last_folder}
+                    logger.debug(f"FOLDER FROM MEMORY → {last_folder}")
                 else:
-                    logger.warning(f"No memory for {key}.ref=last")
+                    logger.debug("No last_folder in memory")
 
-            # -------------------------
-            # 🔥 REF: LAST CREATED
-            # -------------------------
-            if value.get("ref") == "last_created":
+            # file
+            if key == "file" and not value.get("name"):
+                last_file = self.memory.get("last_file")
 
-                found = False
-
-                for action in reversed(history):
-                    result = action.get("result", {})
-                    data = result.get("data", {})
-
-                    if isinstance(data, dict) and key in data:
-                        entities[key] = data[key]
-                        logger.debug(f"RESOLVED {key}.ref=last_created → {entities[key]}")
-                        found = True
-                        break
-
-                if not found:
-                    logger.warning(f"No last_created found for {key}")
+                if last_file:
+                    entities[key] = {"name": last_file}
+                    logger.debug(f"FILE FROM MEMORY → {last_file}")
+                else:
+                    logger.debug("No last_file in memory")
 
         interpreted["entities"] = entities
 

@@ -1,0 +1,31 @@
+[
+  {
+    "timestamp": "2026-03-30T17:08:01.350189",
+    "role": "user",
+    "content": "открой папку тестис"
+  },
+  {
+    "timestamp": "2026-03-30T17:08:02.738670",
+    "role": "agent",
+    "content": {
+      "status": "success",
+      "data": {
+        "path": "C:/тестис",
+        "__last__": "C:/тестис"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-03-30T17:08:37.207847",
+    "role": "user",
+    "content": "создай в этой папке текстовый файл пиво"
+  },
+  {
+    "timestamp": "2026-03-30T17:08:38.689802",
+    "role": "agent",
+    "content": {
+      "status": "error",
+      "error": "Tool not found: create_file"
+    }
+  }
+]

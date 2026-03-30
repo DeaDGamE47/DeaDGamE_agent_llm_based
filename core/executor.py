@@ -86,6 +86,10 @@ class Executor:
 
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+    # =========================================================
+    # MAIN
+    # =========================================================
+
     def execute(self, plan: List[Dict], selected_option: Optional[str] = None) -> Dict[str, Any]:
 
         logger.info("EXECUTION START")
@@ -98,25 +102,34 @@ class Executor:
             tool_name = step.get("tool")
             tool = self.tool_registry.get_tool(tool_name)
 
+            logger.info(f"RUNNING STEP {i+1}: {tool_name}")
+
             if not tool:
                 return {"status": "error", "error": f"Tool not found: {tool_name}"}
 
             args = self._resolve_args(step.get("args", {}), context, selected_option)
 
-            logger.info(f"STEP {i+1}: {tool_name}")
             logger.debug(f"ARGS: {args}")
+            logger.debug(f"CONTEXT: {context}")
 
+            # -------------------------
+            # VALIDATION
+            # -------------------------
             validation_error = tool.validate(args)
             if validation_error:
                 return validation_error
 
+            # -------------------------
             # CONFIRMATION
+            # -------------------------
             if getattr(tool, "requires_confirmation", False):
                 confirm = input("Введите 'yes' для подтверждения: ").strip().lower()
                 if confirm not in ["yes", "y", "да"]:
                     return {"status": "cancelled"}
 
+            # -------------------------
             # RUN
+            # -------------------------
             try:
                 result = tool.run(**args)
             except Exception as e:
@@ -126,6 +139,9 @@ class Executor:
 
             status = result.get("status")
 
+            # -------------------------
+            # NEED CLARIFICATION
+            # -------------------------
             if status == "need_clarification":
                 return {
                     "status": "need_clarification",
@@ -134,6 +150,9 @@ class Executor:
                     "partial_context": context
                 }
 
+            # -------------------------
+            # ERROR
+            # -------------------------
             if status != "success":
                 self._rollback(executed_steps)
                 return result
@@ -141,7 +160,6 @@ class Executor:
             # -------------------------
             # SUCCESS
             # -------------------------
-
             undo_data = result.get("undo_data")
 
             if self.history:
@@ -154,7 +172,7 @@ class Executor:
                     session_id=self.session_id
                 )
 
-            # 🔥 MEMORY SAVE (лог действий)
+            # MEMORY
             if self.memory_manager:
                 try:
                     action = {
@@ -165,8 +183,6 @@ class Executor:
                     }
 
                     self.memory_manager.save_action(action)
-
-                    # 🔥 ВАЖНО: обновляем runtime state
                     self._update_memory_from_result(result)
 
                 except Exception as e:
@@ -178,10 +194,31 @@ class Executor:
                 "undo_data": undo_data
             })
 
+            # -------------------------
+            # CONTEXT SAVE
+            # -------------------------
             if "output" in step:
-                context[step["output"]] = result.get("data")
+                data = result.get("data")
 
-            context["__last__"] = result.get("data")
+                if isinstance(data, dict):
+                    if "path" in data:
+                        context[step["output"]] = data["path"]
+                    elif len(data) == 1:
+                        context[step["output"]] = list(data.values())[0]
+                    else:
+                        context[step["output"]] = data
+                else:
+                    context[step["output"]] = data
+
+            # last
+            if isinstance(result.get("data"), dict) and "path" in result.get("data"):
+                context["__last__"] = result["data"]["path"]
+            else:
+                context["__last__"] = result.get("data")
+
+        # =========================================================
+        # END LOOP
+        # =========================================================
 
         logger.info("EXECUTION FINISHED")
 
@@ -191,7 +228,7 @@ class Executor:
         }
 
     # =========================================================
-    # MEMORY UPDATE (ЕДИНАЯ ТОЧКА)
+    # MEMORY UPDATE
     # =========================================================
 
     def _update_memory_from_result(self, result):
@@ -200,7 +237,6 @@ class Executor:
             return
 
         data = result.get("data")
-
         if not data:
             return
 
@@ -223,34 +259,46 @@ class Executor:
             folder = path.rsplit('/', 1)[0].rsplit('\\', 1)[0]
             self.memory_manager.state["last_folder"] = folder
 
-            logger.debug(f"[MEMORY] file={path}, folder={folder}")
-
         else:
             self.memory_manager.state["last_folder"] = path.rstrip('/\\')
-            logger.debug(f"[MEMORY] folder={path}")
 
+    # =========================================================
+    # RESOLVE ARGS
     # =========================================================
 
     def _resolve_args(self, args, context, selected_option):
         resolved = {}
 
         for k, v in args.items():
+
             if v == "__SELECTED__":
                 resolved[k] = selected_option
+
+            # 🔥 поддержка $переменных
+            elif isinstance(v, str) and v.startswith("$"):
+                key = v[1:]
+                resolved[k] = context.get(key)
+
             elif isinstance(v, str) and v in context:
                 resolved[k] = context[v]
+
             else:
                 resolved[k] = v
 
         return resolved
+
+    # =========================================================
+    # ROLLBACK
+    # =========================================================
 
     def _rollback(self, executed_steps):
         logger.warning("ROLLBACK")
 
         for step in reversed(executed_steps):
             tool = self.tool_registry.get_tool(step["tool"])
-            if hasattr(tool, "undo"):
+
+            if hasattr(tool, "undo") and step.get("undo_data"):
                 try:
                     tool.undo(**step["undo_data"])
-                except:
+                except Exception:
                     pass
