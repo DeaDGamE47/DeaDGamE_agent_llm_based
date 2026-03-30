@@ -1,6 +1,4 @@
 import os
-import subprocess
-
 from tools.base import BaseTool
 from utils.logger import setup_logger
 
@@ -46,7 +44,11 @@ class OpenTool(BaseTool):
 
                 return {
                     "status": "success",
-                    "data": f"Открыта папка: {path}"
+                    "data": {
+                        "path": path,
+                        "type": "folder",
+                        "message": f"Открыта папка: {path}"
+                    }
                 }
 
             # -------------------------
@@ -59,7 +61,11 @@ class OpenTool(BaseTool):
 
                 return {
                     "status": "success",
-                    "data": f"Открыт файл: {path}"
+                    "data": {
+                        "path": path,
+                        "type": "file",
+                        "message": f"Открыт файл: {path}"
+                    }
                 }
 
         except Exception as e:

@@ -1,5 +1,4 @@
 import os
-
 from tools.base import BaseTool
 from utils.logger import setup_logger
 
@@ -9,24 +8,26 @@ logger = setup_logger("Tool:list")
 class ListTool(BaseTool):
 
     name = "list"
-    description = "Показывает содержимое папки"
-    required_args = ["path"]
+    description = "Показывает содержимое папки (текущей или указанной)"
+    required_args = []  # 🔥 path теперь не обязательный
+    optional_args = ["path"]  # 🔥 можно не указывать (используется текущая)
 
     category = "file"
     risk_level = "low"
 
-    def run(self, path: str):
+    def run(self, path: str = None):
         logger.info(f"LIST: {path}")
+
+        # -------------------------
+        # 🔥 если путь не указан — используем текущую директорию
+        # -------------------------
+        if not path:
+            path = os.getcwd()
+            logger.debug(f"Using current directory: {path}")
 
         # -------------------------
         # 🔥 проверки
         # -------------------------
-        if not path:
-            return {
-                "status": "error",
-                "error": "Не передан путь"
-            }
-
         if not os.path.exists(path):
             return {
                 "status": "error",
@@ -62,22 +63,29 @@ class ListTool(BaseTool):
             # -------------------------
             # 🔥 форматированный вывод
             # -------------------------
-            result = []
+            result_lines = []
 
             if folders:
-                result.append("📁 Папки:")
-                result.extend(f"  {f}" for f in folders)
+                result_lines.append("📁 Папки:")
+                result_lines.extend(f"  {f}" for f in folders)
 
             if files:
-                result.append("\n📄 Файлы:")
-                result.extend(f"  {f}" for f in files)
+                result_lines.append("\n📄 Файлы:")
+                result_lines.extend(f"  {f}" for f in files)
 
-            if not result:
-                result.append("Папка пустая")
+            if not result_lines:
+                result_lines.append("Папка пустая")
 
             return {
                 "status": "success",
-                "data": "\n".join(result)
+                "data": {
+                    "path": path,
+                    "type": "folder",
+                    "folders": folders,
+                    "files": files,
+                    "message": "\n".join(result_lines),
+                    "total_count": len(folders) + len(files)
+                }
             }
 
         except Exception as e:
