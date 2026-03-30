@@ -1,304 +1,231 @@
-import sqlite3
-import json
-import os
-from datetime import datetime
-from typing import Dict, Any, List, Optional
-
 from utils.logger import setup_logger
 
 logger = setup_logger("Executor")
 
 
-# =========================================================
-# ACTION HISTORY (DB)
-# =========================================================
-
-class ActionHistory:
-
-    def __init__(self, db_path: str = "data/action_history.db"):
-        self.db_path = db_path
-        self._ensure_db()
-
-    def _ensure_db(self):
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS actions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    session_id TEXT,
-                    action_type TEXT NOT NULL,
-                    tool_name TEXT NOT NULL,
-                    args TEXT,
-                    result_status TEXT,
-                    undo_data TEXT,
-                    user_confirmed BOOLEAN
-                )
-            """)
-            conn.commit()
-
-    def record(self, action_type: str, tool_name: str, args: Dict,
-               result_status: str, undo_data: Optional[Dict] = None,
-               session_id: str = "default"):
-
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                INSERT INTO actions (timestamp, session_id, action_type, tool_name, 
-                                   args, result_status, undo_data, user_confirmed)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                datetime.now().isoformat(),
-                session_id,
-                action_type,
-                tool_name,
-                json.dumps(args),
-                result_status,
-                json.dumps(undo_data) if undo_data else None,
-                True
-            ))
-            conn.commit()
-
-        logger.debug(f"Recorded action: {tool_name} ({action_type})")
-
-    def get_last_action(self, session_id: str = "default") -> Optional[Dict]:
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute("""
-                SELECT * FROM actions 
-                WHERE session_id = ? AND result_status = 'success'
-                ORDER BY id DESC LIMIT 1
-            """, (session_id,))
-            row = cursor.fetchone()
-            return dict(row) if row else None
-
-
-# =========================================================
-# EXECUTOR
-# =========================================================
-
 class Executor:
+    """
+    ТУПОЙ исполнитель команд.
 
-    def __init__(self, tool_registry, memory_manager=None, enable_history: bool = True):
+    НЕ управляет памятью, историей или контекстом.
+    Только: валидация → исполнение → возврат результата (с undo_data если есть).
+
+    Вся память управляется MemoryManager на уровне Agent.
+    """
+
+    def __init__(self, tool_registry):
+        """
+        Args:
+            tool_registry: ToolRegistry с зарегистрированными инструментами
+        """
         self.tool_registry = tool_registry
-        self.memory_manager = memory_manager
-        self.history = ActionHistory() if enable_history else None
+        logger.info("Executor initialized (dumb mode)")
 
-        self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    def execute(self, plan, selected_option=None):
+        """
+        Выполняет план шаг за шагом.
 
-    # =========================================================
-    # MAIN
-    # =========================================================
+        Args:
+            plan: Список шагов [{"tool": str, "args": dict, "output": str}, ...]
+            selected_option: Выбранный вариант (для need_clarification)
 
-    def execute(self, plan: List[Dict], selected_option: Optional[str] = None) -> Dict[str, Any]:
+        Returns:
+            dict: {"status": "success", "data": {...}, "executed_steps": [...]}
+               или {"status": "error", "error": str}
+               или {"status": "need_clarification", "options": [...]}
+               или {"status": "cancelled", "data": str}
+        """
+        logger.info(f"EXECUTION START: {len(plan)} steps")
 
-        logger.info("EXECUTION START")
+        context = {}  # Локальный контекст для передачи данных между шагами
+        executed_steps = []
 
-        context: Dict[str, Any] = {}
-        executed_steps: List[Dict] = []
-
-        for i, step in enumerate(plan):
-
+        for step_idx, step in enumerate(plan):
             tool_name = step.get("tool")
+
             tool = self.tool_registry.get_tool(tool_name)
-
-            logger.info(f"RUNNING STEP {i+1}: {tool_name}")
-
             if not tool:
-                return {"status": "error", "error": f"Tool not found: {tool_name}"}
-
-            args = self._resolve_args(step.get("args", {}), context, selected_option)
-
-            logger.debug(f"ARGS: {args}")
-            logger.debug(f"CONTEXT: {context}")
+                logger.error(f"Tool not found: {tool_name}")
+                return {
+                    "status": "error", 
+                    "error": f"Tool not found: {tool_name}",
+                    "failed_step": step_idx
+                }
 
             # -------------------------
-            # VALIDATION
+            # 🔥 RESOLVE ARGS (подстановка переменных)
+            # -------------------------
+            args = self._resolve_args(
+                step.get("args", {}), 
+                context, 
+                selected_option
+            )
+
+            logger.debug(f"Step {step_idx}: {tool_name} | args: {args}")
+
+            # -------------------------
+            # 🔥 VALIDATION
             # -------------------------
             validation_error = tool.validate(args)
             if validation_error:
-                return validation_error
+                logger.error(f"Validation failed for {tool_name}: {validation_error}")
+                return {
+                    "status": "error",
+                    "error": f"Validation failed: {validation_error}",
+                    "tool": tool_name,
+                    "failed_step": step_idx
+                }
 
             # -------------------------
-            # CONFIRMATION
+            # 🔥 CONFIRMATION (META) — интерактивный ввод
             # -------------------------
             if getattr(tool, "requires_confirmation", False):
-                confirm = input("Введите 'yes' для подтверждения: ").strip().lower()
+                path = args.get("path", "")
+
+                print(f"\n⚠️  Подтверждение действия")
+                print(f"   Tool: {tool.name}")
+                print(f"   Risk: {tool.risk_level}")
+                if path:
+                    print(f"   Path: {path}")
+
+                confirm = input("   Введите 'yes' для подтверждения: ").strip().lower()
+
                 if confirm not in ["yes", "y", "да"]:
-                    return {"status": "cancelled"}
+                    logger.info(f"Action cancelled by user: {tool_name}")
+                    return {
+                        "status": "cancelled",
+                        "data": "Операция отменена пользователем",
+                        "cancelled_step": step_idx
+                    }
 
             # -------------------------
-            # RUN
+            # 🔥 RUN TOOL
             # -------------------------
             try:
                 result = tool.run(**args)
             except Exception as e:
-                logger.exception("TOOL CRASH")
-                self._rollback(executed_steps)
-                return {"status": "error", "error": str(e)}
+                logger.exception(f"Tool execution failed: {tool_name}")
+                return {
+                    "status": "error",
+                    "error": str(e),
+                    "tool": tool_name,
+                    "failed_step": step_idx
+                }
 
-            status = result.get("status")
+            logger.debug(f"Step {step_idx} result: {result}")
+
+            # Сохраняем информацию о выполненном шаге
+            step_info = {
+                "step_idx": step_idx,
+                "tool": tool_name,
+                "args": args,
+                "result": result
+            }
+            executed_steps.append(step_info)
 
             # -------------------------
-            # NEED CLARIFICATION
+            # 🔥 MULTIPLE RESULTS (need clarification)
             # -------------------------
-            if status == "need_clarification":
+            if result.get("status") == "multiple" or result.get("status") == "need_clarification":
+                logger.info(f"Need clarification at step {step_idx}")
                 return {
                     "status": "need_clarification",
-                    "options": result.get("options", []),
-                    "message": result.get("message"),
-                    "partial_context": context
+                    "options": result.get("data", result.get("options", [])),
+                    "message": result.get("message", "Выберите вариант:"),
+                    "completed_steps": executed_steps[:-1],  # Все кроме текущего
+                    "pending_step": step_idx,
+                    "pending_tool": tool_name,
+                    "pending_args": args
                 }
 
             # -------------------------
-            # ERROR
+            # 🔥 ERROR HANDLING
             # -------------------------
-            if status != "success":
-                self._rollback(executed_steps)
-                return result
-
-            # -------------------------
-            # SUCCESS
-            # -------------------------
-            undo_data = result.get("undo_data")
-
-            if self.history:
-                self.history.record(
-                    action_type=step.get("output", "action"),
-                    tool_name=tool_name,
-                    args=args,
-                    result_status="success",
-                    undo_data=undo_data,
-                    session_id=self.session_id
-                )
-
-            # MEMORY
-            if self.memory_manager:
-                try:
-                    action = {
-                        "tool": tool_name,
-                        "args": args,
-                        "result": result.get("data"),
-                        "timestamp": datetime.now().isoformat()
-                    }
-
-                    self.memory_manager.save_action(action)
-                    self._update_memory_from_result(result)
-
-                except Exception as e:
-                    logger.warning(f"Memory save failed: {e}")
-
-            executed_steps.append({
-                "tool": tool_name,
-                "args": args,
-                "undo_data": undo_data
-            })
+            if result.get("status") != "success":
+                logger.error(f"Tool returned error: {tool_name} | {result.get('error')}")
+                return {
+                    "status": "error",
+                    "error": result.get("error", "Unknown error"),
+                    "tool": tool_name,
+                    "failed_step": step_idx,
+                    "completed_steps": executed_steps[:-1]
+                }
 
             # -------------------------
-            # CONTEXT SAVE
+            # 🔥 SAVE TO CONTEXT (для следующих шагов)
             # -------------------------
             if "output" in step:
-                data = result.get("data")
+                output_key = step["output"]
+                context[output_key] = result.get("data")
+                logger.debug(f"Context saved: {output_key} = {context[output_key]}")
 
-                if isinstance(data, dict):
-                    if "path" in data:
-                        context[step["output"]] = data["path"]
-                    elif len(data) == 1:
-                        context[step["output"]] = list(data.values())[0]
-                    else:
-                        context[step["output"]] = data
-                else:
-                    context[step["output"]] = data
-
-            # last
-            if isinstance(result.get("data"), dict) and "path" in result.get("data"):
-                context["__last__"] = result["data"]["path"]
-            else:
-                context["__last__"] = result.get("data")
-
-        # =========================================================
-        # END LOOP
-        # =========================================================
-
-        logger.info("EXECUTION FINISHED")
+        logger.info("EXECUTION FINISHED SUCCESSFULLY")
 
         return {
             "status": "success",
-            "data": context
+            "data": context,
+            "executed_steps": executed_steps
         }
 
-    # =========================================================
-    # MEMORY UPDATE
-    # =========================================================
-
-    def _update_memory_from_result(self, result):
-
-        if not self.memory_manager:
-            return
-
-        data = result.get("data")
-        if not data:
-            return
-
-        path = None
-
-        if isinstance(data, dict):
-            path = data.get("path") or data.get("file_path") or data.get("folder_path")
-
-        elif isinstance(data, str):
-            path = data
-
-        if not path:
-            return
-
-        ext = path.split('.')[-1].lower() if '.' in path else ""
-
-        if ext in ['txt', 'py', 'json', 'md', 'docx', 'pdf']:
-            self.memory_manager.state["last_file"] = path
-
-            folder = path.rsplit('/', 1)[0].rsplit('\\', 1)[0]
-            self.memory_manager.state["last_folder"] = folder
-
-        else:
-            self.memory_manager.state["last_folder"] = path.rstrip('/\\')
-
-    # =========================================================
-    # RESOLVE ARGS
-    # =========================================================
-
     def _resolve_args(self, args, context, selected_option):
+        """
+        Разрешает аргументы:
+        - __SELECTED__ → selected_option
+        - $var → context[var]
+        - Обычные значения остаются как есть
+        """
         resolved = {}
 
         for k, v in args.items():
-
+            # Специальный маркер для выбранного варианта
             if v == "__SELECTED__":
                 resolved[k] = selected_option
+                continue
 
-            # 🔥 поддержка $переменных
-            elif isinstance(v, str) and v.startswith("$"):
-                key = v[1:]
-                resolved[k] = context.get(key)
+            # Переменные из контекста ($var)
+            if isinstance(v, str) and v.startswith("$"):
+                var_name = v[1:]
+                if var_name in context:
+                    resolved[k] = context[var_name]
+                    continue
+                else:
+                    logger.warning(f"Context variable not found: {var_name}")
 
-            elif isinstance(v, str) and v in context:
+            # Прямая ссылка на контекст (для обратной совместимости)
+            if isinstance(v, str) and v in context:
                 resolved[k] = context[v]
+                continue
 
-            else:
-                resolved[k] = v
+            resolved[k] = v
 
         return resolved
 
-    # =========================================================
-    # ROLLBACK
-    # =========================================================
+    def validate_plan(self, plan):
+        """
+        Предварительная валидация плана (без выполнения).
 
-    def _rollback(self, executed_steps):
-        logger.warning("ROLLBACK")
+        Returns:
+            {"valid": True} или {"valid": False, "error": str, "step": int}
+        """
+        for idx, step in enumerate(plan):
+            tool_name = step.get("tool")
+            tool = self.tool_registry.get_tool(tool_name)
 
-        for step in reversed(executed_steps):
-            tool = self.tool_registry.get_tool(step["tool"])
+            if not tool:
+                return {
+                    "valid": False,
+                    "error": f"Tool not found: {tool_name}",
+                    "step": idx
+                }
 
-            if hasattr(tool, "undo") and step.get("undo_data"):
-                try:
-                    tool.undo(**step["undo_data"])
-                except Exception:
-                    pass
+            args = step.get("args", {})
+            validation = tool.validate(args)
+            if validation:
+                return {
+                    "valid": False,
+                    "error": validation,
+                    "step": idx,
+                    "tool": tool_name
+                }
+
+        return {"valid": True}
